@@ -46,9 +46,46 @@ Returns:
 The AI will **automatically** call this tool when it sees a video URL — no need to ask.
 
 Options:
-- `maxFrames` (1-50, default 20) — cap on extracted frames
-- `threshold` (0.0-1.0, default 0.1) — scene-change sensitivity. Use 0.1 for screencasts/demos, 0.3 for live-action video
-- `skipFrames` (boolean) — skip frame extraction for transcript-only analysis (not recommended — frames are critical for understanding)
+- `detail` — analysis depth: `"brief"` (metadata + truncated transcript, no frames), `"standard"` (default), `"detailed"` (dense sampling, more frames)
+- `fields` — array of specific fields to return, e.g. `["metadata", "transcript"]`. Available: `metadata`, `transcript`, `frames`, `comments`, `chapters`, `ocrResults`, `timeline`, `aiSummary`
+- `maxFrames` (1-60, default depends on detail level) — cap on extracted frames
+- `threshold` (0.0-1.0, default 0.1) — scene-change sensitivity
+- `forceRefresh` — bypass cache and re-analyze
+- `skipFrames` — skip frame extraction for transcript-only analysis
+
+### `get_transcript` — Transcript only
+
+```
+> Get the transcript from this video
+```
+
+Quick transcript extraction. Falls back to Whisper transcription when no native transcript is available.
+
+### `get_metadata` — Metadata only
+
+```
+> What's this video about?
+```
+
+Returns metadata, comments, chapters, and AI summary without downloading the video.
+
+### `get_frames` — Frames only
+
+```
+> Extract frames from this video with dense sampling
+```
+
+Two modes:
+- **Scene-change detection** (default) — captures visual transitions
+- **Dense sampling** (`dense: true`) — 1 frame/sec for full coverage
+
+### `analyze_moment` — Deep-dive on a time range
+
+```
+> Analyze what happens between 1:30 and 2:00 in this video
+```
+
+Combines burst frame extraction + filtered transcript + OCR + annotated timeline for a focused segment. Use when you need to understand exactly what happens at a specific moment.
 
 ### `get_frame_at` — Single frame at a timestamp
 
@@ -65,6 +102,18 @@ The AI reads the transcript, spots a critical moment, and requests the exact fra
 ```
 
 For motion, vibration, animations, or fast scrolling — burst mode captures N frames in a narrow window so the AI can see frame-by-frame changes.
+
+## Detail Levels
+
+| Level | Frames | Transcript | OCR | Timeline | Use case |
+|-------|--------|-----------|-----|----------|----------|
+| `brief` | None | First 10 entries | No | No | Quick check — what's this video about? |
+| `standard` | Up to 20 (scene-change) | Full | Yes | Yes | Default — full analysis |
+| `detailed` | Up to 60 (1fps dense) | Full | Yes | Yes | Deep analysis — every second captured |
+
+## Caching
+
+Results are cached in memory for 10 minutes. Subsequent calls with the same URL and options return instantly. Use `forceRefresh: true` to bypass the cache.
 
 ## Supported Platforms
 
@@ -116,45 +165,24 @@ claude mcp add chrome-devtools npx @anthropic-ai/mcp-devtools@latest
 
 The two MCPs complement each other: video analyzer understands **recorded** content, DevTools interacts with **live** pages.
 
-## Sample Output
+## Example Output
 
-### analyze_video with a Loom URL (skipFrames: true)
+The [`examples/loom-demo/`](examples/loom-demo/) folder contains **real outputs** from analyzing a public Loom video ([Boost In-App Demo Video](https://www.loom.com/share/bdebdfe44b294225ac718bad241a94fe), 2:55).
 
-```json
-{
-  "metadata": {
-    "platform": "loom",
-    "title": "Bug: Cart total not updating",
-    "description": "Demonstrating the cart total bug on the checkout page",
-    "duration": 154.5,
-    "durationFormatted": "2:34",
-    "url": "https://www.loom.com/share/abc123..."
-  },
-  "transcript": [
-    { "time": "0:05", "text": "So when I click add to cart..." },
-    { "time": "0:12", "text": "The total stays at zero..." },
-    { "time": "0:18", "speaker": "Guilherme", "text": "Let me show you the console..." }
-  ],
-  "comments": [
-    { "author": "John", "text": "This also happens on mobile", "time": "0:12" },
-    { "author": "Sarah", "text": "Confirmed on iOS Safari too" }
-  ],
-  "ocrResults": [
-    { "time": "0:18", "text": "TypeError: Cannot read property 'total' of undefined", "confidence": 92 }
-  ],
-  "timeline": [
-    { "time": "0:05", "seconds": 5, "transcript": "So when I click add to cart...", "frameIndex": 0 },
-    { "time": "0:12", "seconds": 12, "transcript": "The total stays at zero...", "frameIndex": 1 },
-    { "time": "0:18", "seconds": 18, "transcript": "Let me show you the console...", "frameIndex": 2, "ocrText": "TypeError: Cannot read property 'total' of undefined" }
-  ],
-  "frameCount": 3,
-  "warnings": []
-}
-```
+| File | What it shows |
+|------|--------------|
+| [`metadata.json`](examples/loom-demo/metadata.json) | Title, duration, platform |
+| [`transcript.json`](examples/loom-demo/transcript.json) | 42 timestamped entries with speaker IDs |
+| [`timeline.json`](examples/loom-demo/timeline.json) | Unified chronological view (transcript + frames merged) |
+| [`moment-transcript-0m30s-0m45s.json`](examples/loom-demo/moment-transcript-0m30s-0m45s.json) | Filtered transcript for `analyze_moment` (0:30–0:45) |
+| [`full-analysis.json`](examples/loom-demo/full-analysis.json) | Complete `analyze_video` output |
 
-### get_frame_at with a direct video URL
+**Frame images** (19 total in [`examples/loom-demo/frames/`](examples/loom-demo/frames/)):
+- `scene_*.jpg` — scene-change detection (key visual transitions)
+- `dense_*.jpg` — 1fps dense sampling (every 10th frame saved as sample)
+- `burst_*.jpg` — burst extraction for moment analysis (0:30–0:45)
 
-Returns the frame as an inline image that the AI can see and analyze.
+> **Regenerate after changes:** `npx tsx examples/generate.ts` — requires yt-dlp + network access.
 
 ## Development
 
@@ -181,22 +209,31 @@ npm run inspect
 src/
 ├── index.ts                    # Entry point (shebang + stdio)
 ├── server.ts                   # FastMCP server + tool registration
-├── tools/                      # MCP tool definitions
-│   ├── analyze-video.ts
-│   ├── get-frame-at.ts
-│   └── get-frame-burst.ts
+├── tools/                      # MCP tool definitions (7 tools)
+│   ├── analyze-video.ts        # Full analysis with detail levels + caching
+│   ├── analyze-moment.ts       # Deep-dive on a time range
+│   ├── get-transcript.ts       # Transcript-only with Whisper fallback
+│   ├── get-metadata.ts         # Metadata + comments + chapters
+│   ├── get-frames.ts           # Frames-only (scene-change or dense)
+│   ├── get-frame-at.ts         # Single frame at timestamp
+│   └── get-frame-burst.ts      # N frames in a time range
 ├── adapters/                   # Platform-specific logic
 │   ├── adapter.interface.ts    # IVideoAdapter interface + registry
 │   ├── loom.adapter.ts         # Loom: authless GraphQL
-│   └── direct.adapter.ts      # Direct URL: any mp4/webm link
+│   └── direct.adapter.ts       # Direct URL: any mp4/webm link
 ├── processors/                 # Shared processing
-│   ├── frame-extractor.ts      # ffmpeg scene detection + extraction
+│   ├── frame-extractor.ts      # ffmpeg scene detection + dense + burst extraction
 │   ├── browser-frame-extractor.ts # Headless Chrome fallback for frames
+│   ├── audio-transcriber.ts    # Whisper fallback (HF transformers → CLI → OpenAI)
 │   ├── image-optimizer.ts      # sharp resize/compress
 │   ├── frame-dedup.ts          # Perceptual dedup (dHash + Hamming distance)
 │   ├── frame-ocr.ts            # OCR text extraction (tesseract.js)
 │   └── annotated-timeline.ts   # Unified timeline (transcript + frames + OCR)
+├── config/
+│   └── detail-levels.ts        # brief / standard / detailed config
 ├── utils/
+│   ├── cache.ts                # In-memory TTL cache with LRU eviction
+│   ├── field-filter.ts         # Selective field filtering for responses
 │   ├── url-detector.ts         # Platform detection from URL
 │   ├── vtt-parser.ts           # WebVTT → transcript entries
 │   └── temp-files.ts           # Temp directory management

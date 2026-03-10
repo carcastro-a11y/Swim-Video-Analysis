@@ -5,29 +5,52 @@ import { DirectAdapter } from './adapters/direct.adapter.js';
 import { registerAnalyzeVideo } from './tools/analyze-video.js';
 import { registerGetFrameAt } from './tools/get-frame-at.js';
 import { registerGetFrameBurst } from './tools/get-frame-burst.js';
+import { registerGetTranscript } from './tools/get-transcript.js';
+import { registerGetMetadata } from './tools/get-metadata.js';
+import { registerGetFrames } from './tools/get-frames.js';
+import { registerAnalyzeMoment } from './tools/analyze-moment.js';
 
 export function createServer(): FastMCP {
   const server = new FastMCP({
     name: 'mcp-video-analyzer',
-    version: '0.1.0',
-    instructions: `Video analysis MCP server. Extracts transcripts, key frames, metadata, comments, and chapters from video URLs.
+    version: '0.2.0',
+    instructions: `Video analysis MCP server. Extracts transcripts, key frames, metadata, comments, OCR text, and annotated timelines from video URLs.
 
-IMPORTANT: When a user shares a video URL (loom.com/share/..., .mp4, .webm, .mov), ALWAYS call analyze_video automatically — do not ask for confirmation. Videos contain critical visual information that cannot be understood from text alone. Frames are essential to fully understand what the video shows.
+AUTOMATIC BEHAVIOR — Do NOT wait for the user to ask:
+- When the user shares a video URL → call analyze_video immediately (detail="standard").
+- When discussing a specific moment in a video → call analyze_moment with the time range.
+- When the user asks "what happens at X:XX" → call get_frame_at or analyze_moment.
+- When the user asks to compare frames or see motion → call get_frame_burst.
+- When the transcript alone would answer the question → call get_transcript (faster, no download).
+- When only metadata is needed (title, duration, comments) → call get_metadata (no download).
+
+The AI should ALWAYS call the appropriate tool automatically — never ask "would you like me to analyze this video?" Just do it.
 
 Supported platforms:
 - Loom (loom.com/share/...) — transcript, metadata, comments, frames (no auth needed)
 - Direct video URLs (.mp4, .webm, .mov) — frame extraction, duration probing
 
-Tools:
-- analyze_video: Full analysis — ALWAYS include frames (do NOT set skipFrames unless the user explicitly asks for transcript-only). Use threshold=0.1 for screencasts/demos, 0.3 for live-action video.
-- get_frame_at: Extract a single frame at a specific timestamp — use after reading the transcript to inspect a critical moment.
-- get_frame_burst: Extract N frames across a narrow time range — use for motion, animations, or fast-changing content where scene detection misses changes.
+Tools (choose the most efficient one for the task):
+- analyze_video: Full analysis. Use by default when a video URL appears. Returns transcript + frames + metadata + OCR + timeline.
+  - detail="brief" → fast, metadata + truncated transcript, no video download
+  - detail="standard" → default, scene-change frames + full transcript + OCR
+  - detail="detailed" → dense 1fps sampling, more frames, thorough OCR
+  - fields=["metadata","transcript"] → return only specific fields
+  - Cached for 10min — use forceRefresh=true to re-analyze.
+- get_transcript: Transcript only. Faster than analyze_video when you only need what was said. Whisper fallback for videos without native transcripts.
+- get_metadata: Metadata + comments + chapters. No video download needed.
+- get_frames: Frames only (scene-change or dense=true for 1fps). Use when you need visuals without transcript.
+- get_frame_at: Single frame at a timestamp. Use when the transcript reveals an interesting moment and you want to see it.
+- get_frame_burst: N frames in a narrow time range. Use for motion, animations, fast UI changes.
+- analyze_moment: Deep-dive on a time range. Combines burst frames + filtered transcript + OCR + mini-timeline. Use when the user asks about a specific part of the video.
 
-Workflow tips:
-1. Start with analyze_video to get the full picture (transcript + frames + metadata).
-2. Read the transcript to identify critical moments.
-3. Use get_frame_at to inspect specific moments that need closer examination.
-4. Use get_frame_burst if the user reports motion/animation issues (e.g., "flickering", "shaking", "animation bug").`,
+Decision flow:
+1. User shares a video URL → analyze_video (standard)
+2. User asks about a specific timestamp → analyze_moment or get_frame_at
+3. User asks "what did they say about X" → get_transcript (fast, no download)
+4. User asks "how long is this video" → get_metadata (fast, no download)
+5. User asks for more detail after initial analysis → analyze_video (detailed) or analyze_moment
+6. User asks to see motion/animation → get_frame_burst`,
   });
 
   // Register adapters (order matters: more specific first)
@@ -38,6 +61,10 @@ Workflow tips:
   registerAnalyzeVideo(server);
   registerGetFrameAt(server);
   registerGetFrameBurst(server);
+  registerGetTranscript(server);
+  registerGetMetadata(server);
+  registerGetFrames(server);
+  registerAnalyzeMoment(server);
 
   return server;
 }
