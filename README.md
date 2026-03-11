@@ -4,14 +4,51 @@ MCP server for video analysis — extracts transcripts, key frames, and metadata
 
 No existing video MCP combines **transcripts + visual frames + metadata** in one tool. This one does.
 
-## Quick Start
+## Installation
+
+### Prerequisites
+
+- **Node.js 18+** — required to run the server via `npx`
+- **yt-dlp** (optional) — enables frame extraction via ffmpeg. Install with `pip install yt-dlp`
+- **Chrome/Chromium** (optional) — fallback for frame extraction if yt-dlp is unavailable
+
+> Without yt-dlp or Chrome, the server still works — you'll get transcripts, metadata, and comments, just no frames.
+
+### Claude Code (CLI)
 
 ```bash
-# One-command install for Claude Code
-claude mcp add video-analyzer npx mcp-video-analyzer@latest
+claude mcp add video-analyzer -- npx mcp-video-analyzer@latest
 ```
 
-Or manually add to your MCP config (Claude Desktop, Cursor, VS Code):
+Then restart Claude Code or start a new conversation.
+
+### VS Code / Cursor
+
+Add to your MCP settings file:
+
+- **VS Code**: `File → Preferences → Settings → search "MCP"` or edit `~/.vscode/mcp.json` / `%APPDATA%\Code\User\mcp.json` (Windows)
+- **Cursor**: `Settings → MCP Servers → Add`
+
+```json
+{
+  "servers": {
+    "mcp-video-analyzer": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["mcp-video-analyzer@latest"]
+    }
+  }
+}
+```
+
+Then reload the window (`Ctrl+Shift+P` → "Developer: Reload Window").
+
+### Claude Desktop
+
+Add to your Claude Desktop config file:
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -23,6 +60,18 @@ Or manually add to your MCP config (Claude Desktop, Cursor, VS Code):
   }
 }
 ```
+
+Then restart Claude Desktop.
+
+### Verify it works
+
+Once installed, ask your AI assistant:
+
+```
+Analyze this video: https://www.loom.com/share/bdebdfe44b294225ac718bad241a94fe
+```
+
+If the server is connected, it will automatically call the `analyze_video` tool.
 
 ## Tools
 
