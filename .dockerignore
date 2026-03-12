@@ -1,0 +1,14 @@
+node_modules
+src
+test
+scripts
+examples
+.git
+.github
+*.md
+*.config.*
+tsconfig*.json
+.prettierrc
+knip.json
+glama.json
+smithery.yaml
