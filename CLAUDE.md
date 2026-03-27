@@ -40,10 +40,23 @@ MCP server for video analysis — extracts transcripts, key frames, metadata, OC
 
 ## Publishing
 
-- Always run `npm run test:smoke` before publishing to verify the server starts.
-- Run `npm run verify-package` to test the tarball installs and starts in a clean environment.
-- Keep `server.ts` version in sync with `package.json` version.
+### Release Process
+
+1. **Bump version** in both `package.json` AND `src/server.ts` (must match).
+2. **Run checks**: `npm run check` (format, lint, typecheck, knip, tests).
+3. **Run smoke test**: `npm run test:smoke` (verifies MCP server starts and responds).
+4. **Run package verification**: `npm run verify-package` (packs tarball, installs in temp dir, verifies startup).
+5. **Commit & push**: commit version bump to main.
+6. **Publish to npm**: `npm publish`.
+7. **Create GitHub release**: `gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes`.
+8. **Update .mcp.json**: pin new version in local MCP config.
+9. **Verify on npm**: `npm view mcp-video-analyzer version`.
+
+### Notes
+
 - Source maps are disabled in tsconfig to reduce package size.
+- `npm publish` runs `prepublishOnly` which executes `npm run check && npm run build` automatically.
+- Never publish without testing as consumer — `npm run check` passing does NOT mean the package works for end users. Always run `npm run verify-package`.
 
 ## Dependencies
 
